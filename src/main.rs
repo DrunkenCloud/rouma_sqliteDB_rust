@@ -1,120 +1,100 @@
-use std::env;
+use std::fs::File;
 use std::io::{self, Write};
+use sha2::{Sha256, Digest};
 
-fn get_input() -> String {
-    io::stdout().flush().expect("Failed to flush stdout");
-
-    let mut input = String::new();
-    io::stdin().read_line(&mut input).expect("Failed to read line");
-    input
+#[derive(Debug)]
+struct Table {
+    name: String,
+    columns: Vec<String>,
+    rows: Vec<Vec<String>>,
 }
 
-struct Line {
-	key: i32,
-	name: String,
-	email: String
+#[derive(Debug)]
+struct Database {
+    tables: Vec<Table>,
 }
 
-impl Line {
-	fn new(key: i32, name: String, email: String) -> Line {
-		Line {
-			key: key,
-			name: name,
-			email: email
-		}
-	}
-}
+impl Database {
+    fn new() -> Self {
+        Database { tables: Vec::new() }
+    }
 
-fn handle_input(input: &str, lines: &mut Vec<Line>) {
-	let parts: Vec<&str> = input.split_whitespace().collect();
-	if parts.len() != 4 {
-		println!("Invalid insert command. Use: insert <key> <name> <email>");
-		return;
-	}
-	let key: i32 = match parts[1].parse() {
-		Ok(num) => num,
-		Err(_) => {
-			println!("Invalid key. It should be an integer");
-			return;
-		}
-	};
+    fn add_table(&mut self, table: Table) {
+        self.tables.push(table);
+    }
 
-	let name = parts[2].to_string();
-	let email = parts[3].to_string();
-	let new_line = Line::new(key, name, email);
-	lines.push(new_line);
-}
-fn handle_select(input: &str, lines: &Vec<Line>) {
-	let parts: Vec<&str> = input.split_whitespace().collect();
-	if parts.len() != 2 {
-		println!("Invalid select command. Use select <key>");
-		return;
-	}
+    fn to_bytes(&self) -> Vec<u8> {
+        let mut bytes = Vec::new();
 
-	if parts[1] == "*" {
-		for line in lines {
-			println!("({}, {}, {})", line.key, line.name, line.email);
-		}
-		return;
-	}
+        // Write the header
+        bytes.extend_from_slice(b".rouma");
 
-	let key: i32 = match parts[1].parse() {
-	    Ok(num) => num,
-	    Err(_) => {
-	    	println!("Invalid key. It should be an integer.");
-	    	return;
-	    }
-	};
+        // Placeholder for the hash
+        bytes.extend_from_slice(&[0u8; 10]);
 
-	for line in lines {
-		if line.key == key {
-			println!("Found: {} {} {}",line.key, line.name, line.email);
-			return;
-		}
-	}
+        for table in &self.tables {
+            // Write number of rows (2 bytes)
+            let num_rows = table.rows.len() as u16;
+            bytes.extend_from_slice(&num_rows.to_be_bytes());
 
-	println!("No entry found with key: {}", key);
-}
+            // Write table structure
+            bytes.extend_from_slice(table.name.as_bytes());
+            bytes.push(0); // Null terminator for the table name
 
-fn process_input(input: &str, lines: &mut Vec<Line>) -> bool {
-	let trimmed_input = input.trim().to_lowercase();
-
-	if trimmed_input == "exit" {
-		println!("Exiting Program!");
-		return true;
-	} else if trimmed_input.starts_with("insert") {
-		println!("Performing insert command!");
-		handle_input(input, lines);
-	} else if trimmed_input.starts_with("select") {
-		println!("Performing select command!");
-		handle_select(input, lines);
-	} else {
-		println!("Unrecognied command");
-	}
-	false
-}
-
-fn main() {
-    let args: Vec<String> = env::args().collect();
-
-    if args.len() > 1 {
-        for (i, arg) in args.iter().enumerate() {
-            if i == 0 {
-                continue;
+            for column in &table.columns {
+                bytes.extend_from_slice(column.as_bytes());
+                bytes.push(0); // Null terminator for each column name
             }
-            println!("Argument: {}", arg);
+
+            // End of table structure marker
+            bytes.extend_from_slice(&[0x00, 0x01, 0x02]);
+
+            // Write table rows
+            for row in &table.rows {
+                for cell in row {
+                    bytes.extend_from_slice(cell.as_bytes());
+                    bytes.push(0); // Null terminator for each cell
+                }
+            }
         }
-    } else {
-        println!("No arguments given");
+
+        // Calculate the hash of the data (excluding the header)
+        let mut hasher = Sha256::new();
+        hasher.update(&bytes[16..]); // Skip the header and hash placeholder
+        let hash_result = hasher.finalize();
+
+        // Insert the hash into the placeholder
+        let hash_bytes = &hash_result[..10];
+        bytes.splice(6..16, hash_bytes.iter().cloned());
+
+        bytes
     }
 
-    let mut lines: Vec<Line> = Vec::new();
-
-    loop {
-        print!("db > ");
-        let input: String = get_input();
-        if process_input(&input, &mut lines) {
-        	break;
-        }
+    fn write_to_file(&self, filename: &str) -> io::Result<()> {
+        let bytes = self.to_bytes();
+        let mut file = File::create(filename)?;
+        file.write_all(&bytes)?;
+        Ok(())
     }
+}
+fn main() -> io::Result<()> {
+    // Create a sample database
+    let mut db = Database::new();
+
+    // Create a sample table
+    let table = Table {
+        name: "users".to_string(),
+        columns: vec!["id".to_string(), "name".to_string(), "email".to_string()],
+        rows: vec![
+            vec!["1".to_string(), "user1".to_string(), "user1@example.com".to_string()],
+            vec!["2".to_string(), "user2".to_string(), "user2@example.com".to_string()],
+        ],
+    };
+
+    db.add_table(table);
+
+    // Write the database to a file
+    db.write_to_file("database.db")?;
+
+    Ok(())
 }
