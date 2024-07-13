@@ -28,13 +28,13 @@ impl Line {
 fn handle_input(input: &str, lines: &mut Vec<Line>) {
 	let parts: Vec<&str> = input.split_whitespace().collect();
 	if parts.len() != 4 {
-		print!("Invalid insert command. Use: insert <key> <name> <email>");
+		println!("Invalid insert command. Use: insert <key> <name> <email>");
 		return;
 	}
 	let key: i32 = match parts[1].parse() {
 		Ok(num) => num,
 		Err(_) => {
-			print!("Invalid key. It should be an integer");
+			println!("Invalid key. It should be an integer");
 			return;
 		}
 	};
@@ -48,6 +48,13 @@ fn handle_select(input: &str, lines: &Vec<Line>) {
 	let parts: Vec<&str> = input.split_whitespace().collect();
 	if parts.len() != 2 {
 		println!("Invalid select command. Use select <key>");
+		return;
+	}
+
+	if parts[1] == "*" {
+		for line in lines {
+			println!("({}, {}, {})", line.key, line.name, line.email);
+		}
 		return;
 	}
 
