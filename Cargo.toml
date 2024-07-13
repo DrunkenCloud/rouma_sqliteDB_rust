@@ -1,5 +1,5 @@
 [package]
-name = "rouma_sqliteDB_rust"
+name = "rouma_sqlite_db_rust"
 version = "0.1.0"
 edition = "2021"
 
